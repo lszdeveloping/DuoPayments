@@ -42,7 +42,7 @@ A versão online usa `api/cloud.mjs` e Supabase; `server.mjs` continua sendo a v
 
 1. No projeto Supabase escolhido, execute `supabase/migrations/202609090001_duo.sql` no SQL Editor. As tabelas usam RLS, sem acesso para visitantes ou usuários autenticados do Supabase. Somente a API do servidor usa a chave administrativa.
 2. Envie este repositório ao GitHub e importe-o na Vercel, usando framework **Other** e Node.js **24.x**. A pasta de saída é `public`; não há build a executar.
-3. Configure as variáveis da Vercel, em Production: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (chave service_role do Supabase), `APP_PASSWORD` (mínimo 12 caracteres) e `SESSION_SECRET` (segredo aleatório com no mínimo 32 caracteres). `.env.example` contém somente os nomes e exemplos. Nunca coloque as chaves em `public` ou no GitHub.
+3. Configure as variáveis da Vercel, em Production: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (chave service_role do Supabase), `APP_PASSWORD` (senha não vazia) e `SESSION_SECRET` (segredo aleatório com no mínimo 32 caracteres). `.env.example` contém somente os nomes e exemplos. Nunca coloque as chaves em `public` ou no GitHub.
 4. Faça o deploy e abra o endereço HTTPS. Ambos usam a mesma senha e selecionam quem recebeu ao registrar. Para revogar todas as sessões, troque `SESSION_SECRET` e publique novamente.
 
 O banco online começa vazio: registros de `data/duo.sqlite` não são enviados automaticamente. Não aponte deployments de preview para o banco de produção; configure outro projeto Supabase se precisar testar online. A conexão real e a migração precisam ser validadas no projeto escolhido antes de considerar a publicação concluída.

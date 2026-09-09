@@ -13,7 +13,10 @@ test('API cloud valida configuração, sessão, cálculo, conflito e login', asy
   try {
     delete process.env.SUPABASE_URL;
     assert.equal((await request('/api/state')).statusCode, 503);
-    Object.assign(process.env, { SUPABASE_URL: 'https://test.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'server-only-test-key', APP_PASSWORD: 'test-password-123', SESSION_SECRET: 'a-test-secret-longer-than-32-characters' });
+    Object.assign(process.env, { SUPABASE_URL: 'https://test.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'server-only-test-key', APP_PASSWORD: 'test', SESSION_SECRET: 'a-test-secret-longer-than-32-characters' });
+    process.env.APP_PASSWORD = '';
+    assert.equal((await request('/api/state')).statusCode, 503);
+    process.env.APP_PASSWORD = 'test';
     assert.equal((await request('/api/state')).statusCode, 401);
     const cookie = `duo=${issueSession(process.env.SESSION_SECRET)}`;
     const rows = [{ type: 'income', person: 0, amount: 10000 }, { type: 'income', person: 1, amount: 8000 }];

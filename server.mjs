@@ -7,7 +7,7 @@ import { summarize, validateIncome } from './ledger.mjs';
 
 const host = process.env.HOST || '127.0.0.1';
 const password = process.env.APP_PASSWORD;
-if (host !== '127.0.0.1' && host !== 'localhost' && (!password || password.length < 12)) throw new Error('Para acesso externo, defina APP_PASSWORD com pelo menos 12 caracteres.');
+if (host !== '127.0.0.1' && host !== 'localhost' && !password) throw new Error('Para acesso externo, defina APP_PASSWORD.');
 mkdirSync(new URL('./data/', import.meta.url), { recursive: true });
 const db = new DatabaseSync(process.env.DB_PATH || fileURLToPath(new URL('./data/duo.sqlite', import.meta.url)));
 db.exec(`PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY, names TEXT NOT NULL); INSERT OR IGNORE INTO settings VALUES (1, '["Você","Seu sócio"]'); CREATE TABLE IF NOT EXISTS entries (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, person INTEGER NOT NULL, amount INTEGER NOT NULL, description TEXT NOT NULL, date TEXT NOT NULL, created TEXT DEFAULT CURRENT_TIMESTAMP);`);

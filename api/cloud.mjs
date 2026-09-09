@@ -14,7 +14,7 @@ async function readBody(req) {
 }
 export default async function handler(req, res) {
   const { SUPABASE_URL: url, SUPABASE_SERVICE_ROLE_KEY: key, APP_PASSWORD: password, SESSION_SECRET: secret } = process.env;
-  if (!url || !key || !password || password.length < 12 || !secret || secret.length < 32) return send(res, 503, { error: 'A configuração do servidor ainda não foi concluída.' });
+  if (!url || !key || !password || !secret || secret.length < 32) return send(res, 503, { error: 'A configuração do servidor ainda não foi concluída.' });
   async function rpc(name, input) {
     const response = await fetch(`${url.replace(/\/$/, '')}/rest/v1/rpc/${name}`, { method: 'POST', headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal: AbortSignal.timeout(12000) });
     if (!response.ok) throw new Error('Não foi possível acessar o banco. Tente novamente.');
