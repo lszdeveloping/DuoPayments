@@ -22,3 +22,13 @@ export function validateIncome(body) {
   if (typeof body.description !== 'string' || body.description.trim().length > 120) throw new Error('Use uma descrição de até 120 caracteres.');
   if (typeof body.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.date) || Number.isNaN(Date.parse(body.date)) || new Date(body.date).toISOString().slice(0, 10) !== body.date) throw new Error('Informe uma data válida.');
 }
+
+export function validateIncomeChange(body) {
+  if (!Number.isSafeInteger(body.id) || body.id < 1) throw new Error('Recebimento inválido.');
+  if (!body.expected) throw new Error('Atualize a página e tente novamente.');
+  validateIncome(body.expected);
+}
+
+export function sameIncome(entry, expected) {
+  return ['person', 'amount', 'description', 'date'].every(key => entry[key] === expected[key]);
+}

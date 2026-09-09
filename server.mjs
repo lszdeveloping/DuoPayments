@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { summarize, validateIncome } from './ledger.mjs';
+import { summarize, validateIncome, validateIncomeChange, sameIncome } from './ledger.mjs';
 
 const host = process.env.HOST || '127.0.0.1';
 const password = process.env.APP_PASSWORD;
@@ -17,7 +17,7 @@ const entries = () => db.prepare('SELECT * FROM entries ORDER BY id DESC').all()
 const state = () => { const rows = entries(); return { names: JSON.parse(db.prepare('SELECT names FROM settings WHERE id=1').get().names), entries: rows, summary: summarize(rows) }; };
 const json = (res, status, value) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); };
 async function body(req) { let result = ''; for await (const chunk of req) { result += chunk; if (result.length > 8192) throw new Error('Solicitação muito grande.'); } return JSON.parse(result || '{}'); }
-const files = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'] };
+const files = { '/theme.js': ['theme.js', 'text/javascript'], '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'] };
 http.createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
@@ -47,6 +47,15 @@ http.createServer(async (req, res) => {
         const input = await body(req); validateIncome(input);
         db.prepare('INSERT INTO entries (type,person,amount,description,date) VALUES (?,?,?,?,?)').run('income', input.person, input.amount, input.description.trim() || 'Recebimento', input.date);
         return json(res, 201, state());
+      }
+      if (['/api/income-edit', '/api/income-delete'].includes(path) && req.method === 'POST') {
+        const input = await body(req); validateIncomeChange(input);
+        if (path === '/api/income-edit') validateIncome(input);
+        const entry = db.prepare("SELECT * FROM entries WHERE id=? AND type='income'").get(input.id);
+        if (!entry || !sameIncome(entry, input.expected)) return json(res, 409, { error: 'Este recebimento foi alterado ou excluído. Atualize a página e tente novamente.' });
+        if (path === '/api/income-delete') db.prepare("DELETE FROM entries WHERE id=? AND type='income'").run(input.id);
+        else db.prepare("UPDATE entries SET person=?,amount=?,description=?,date=? WHERE id=? AND type='income'").run(input.person, input.amount, input.description.trim() || 'Recebimento', input.date, input.id);
+        return json(res, 200, state());
       }
       if (path === '/api/settle' && req.method === 'POST') {
         const input = await body(req);

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { summarize, validateIncome } from '../ledger.mjs';
+import { summarize, validateIncome, validateIncomeChange } from '../ledger.mjs';
 import { issueSession, validSession, sameSecret } from '../cloud-auth.mjs';
 
 const send = (res, status, data) => { res.setHeader('Cache-Control', 'no-store'); res.statusCode = status; res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(data)); };
@@ -35,12 +35,13 @@ export default async function handler(req, res) {
     }
     const token = req.headers.cookie?.match(/(?:^|;\s*)duo=([^;]+)/)?.[1];
     if (!validSession(token, secret)) return send(res, 401, { error: 'Entre com a senha da loja.' });
-    const actions = { '/api/state': ['GET', 'state'], '/api/income': ['POST', 'income'], '/api/settings': ['POST', 'settings'], '/api/settle': ['POST', 'settle'] };
+    const actions = { '/api/state': ['GET', 'state'], '/api/income': ['POST', 'income'], '/api/income-edit': ['POST', 'income-edit'], '/api/income-delete': ['POST', 'income-delete'], '/api/settings': ['POST', 'settings'], '/api/settle': ['POST', 'settle'] };
     const action = actions[path];
     if (!action) return send(res, 404, { error: 'Página não encontrada.' });
     if (req.method !== action[0]) return send(res, 405, { error: 'Método não permitido.' });
     const input = req.method === 'GET' ? {} : await readBody(req);
-    if (action[1] === 'income') validateIncome(input);
+    if (['income', 'income-edit'].includes(action[1])) validateIncome(input);
+    if (['income-edit', 'income-delete'].includes(action[1])) validateIncomeChange(input);
     if (action[1] === 'settings') {
       if (!Array.isArray(input.names) || input.names.length !== 2 || input.names.some(n => typeof n !== 'string' || !n.trim() || n.trim().length > 30) || input.names[0].trim().toLowerCase() === input.names[1].trim().toLowerCase()) return send(res, 400, { error: 'Informe dois nomes diferentes, com até 30 caracteres.' });
       input.names = input.names.map(n => n.trim());

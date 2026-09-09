@@ -24,7 +24,15 @@ npm.cmd start
 
 Ambos acessam o IP da máquina na porta 3000 e entram com a senha compartilhada. Os sócios selecionam manualmente quem recebeu; não há contas individuais. Para acesso pela internet, hospede o servidor Node com armazenamento persistente e HTTPS, e defina `COOKIE_SECURE=true`. O projeto ainda não foi publicado na internet. `PORT` e `DB_PATH` são configuráveis. Mantenha a senha fora do código. Para uma cópia de segurança consistente, pare o servidor e copie a pasta `data` inteira.
 
-## Repasses
+## Tema e correções
+
+O botão no topo alterna entre modo claro e escuro e salva a preferência neste navegador. No primeiro acesso, o tema segue o sistema.
+
+Em Movimentações, cada recebimento tem as ações **Editar** e **Excluir**. É possível corrigir o sócio, valor, data e descrição. A exclusão exige confirmação. Os totais e o saldo são recalculados, preservando repasses já pagos; por isso, corrigir um recebimento pode gerar um novo saldo pendente. Alterações concorrentes no mesmo recebimento são recusadas para evitar sobrescrever a correção do outro sócio.
+
+Na versão Supabase, execute também `supabase/migrations/202609090002_income_changes.sql`, depois da migração inicial, antes de publicar esta atualização. A migração preserva os registros existentes. Na versão local, basta reiniciar o servidor atualizado.
+
+## Registro de repasses
 
 Registrar repasse exige confirmação de que o pagamento foi feito. O site não executa Pix. Se outro recebimento mudar o saldo antes da confirmação, o acerto é recusado para revisão. Repasses anteriores permanecem no histórico e entram no cálculo dos próximos saldos.
 

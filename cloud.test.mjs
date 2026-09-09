@@ -34,6 +34,24 @@ test('API cloud valida configuração, sessão, cálculo, conflito e login', asy
     const login = await request('/api/login', { password: process.env.APP_PASSWORD });
     assert.equal(login.statusCode, 200);
     assert.match(login.headers['Set-Cookie'], /HttpOnly; Secure; SameSite=Strict/);
+    const expected = { person: 0, amount: 10000, date: '2026-09-09', description: 'Serviço' };
+    const change = { id: 1, expected, ...expected, amount: 500 };
+    assert.equal((await request('/api/income-edit', change)).statusCode, 401);
+    assert.equal((await request('/api/income-edit', { ...change, amount: 0 }, cookie)).statusCode, 400);
+    assert.equal((await request('/api/income-delete', { id: -1, expected }, cookie)).statusCode, 400);
+    assert.equal((await request('/api/income-delete', { id: 1 }, cookie)).statusCode, 400);
+    for (const action of ['income-edit', 'income-delete']) {
+      globalThis.fetch = async (url, options) => {
+        assert.deepEqual(JSON.parse(options.body), { p_action: action, p_input: change });
+        return { ok: true, json: async () => ({ names: ['A', 'B'], entries: action === 'income-edit' ? [{ ...expected, amount: 500, type: 'income' }] : [] }) };
+      };
+      const response = await request(`/api/cloud?route=${action}`, change, cookie);
+      assert.equal(response.statusCode, 200);
+      assert.equal(response.data.summary.total, action === 'income-edit' ? 500 : 0);
+    }
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({ error: 'Este recebimento foi alterado ou excluído.' }) });
+    assert.equal((await request('/api/income-edit', change, cookie)).statusCode, 409);
+    assert.equal((await request('/api/income-delete', change, cookie)).statusCode, 409);
   } finally {
     globalThis.fetch = previousFetch;
     for (const key of ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'APP_PASSWORD', 'SESSION_SECRET']) {
