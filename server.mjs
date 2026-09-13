@@ -11,6 +11,7 @@ if (host !== '127.0.0.1' && host !== 'localhost' && !password) throw new Error('
 mkdirSync(new URL('./data/', import.meta.url), { recursive: true });
 const db = new DatabaseSync(process.env.DB_PATH || fileURLToPath(new URL('./data/duo.sqlite', import.meta.url)));
 db.exec(`PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY, names TEXT NOT NULL); INSERT OR IGNORE INTO settings VALUES (1, '["Você","Seu sócio"]'); CREATE TABLE IF NOT EXISTS entries (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, person INTEGER NOT NULL, amount INTEGER NOT NULL, description TEXT NOT NULL, date TEXT NOT NULL, created TEXT DEFAULT CURRENT_TIMESTAMP);`);
+if (!db.prepare('PRAGMA table_info(entries)').all().some(column => column.name === 'recipient')) db.exec("ALTER TABLE entries ADD COLUMN recipient TEXT NOT NULL DEFAULT ''");
 const sessions = new Map();
 const attempts = new Map();
 const entries = () => db.prepare('SELECT * FROM entries ORDER BY id DESC').all();
@@ -45,7 +46,7 @@ http.createServer(async (req, res) => {
       if (path === '/api/state' && req.method === 'GET') return json(res, 200, state());
       if (path === '/api/income' && req.method === 'POST') {
         const input = await body(req); validateIncome(input);
-        db.prepare('INSERT INTO entries (type,person,amount,description,date) VALUES (?,?,?,?,?)').run('income', input.person, input.amount, input.description.trim() || 'Recebimento', input.date);
+        db.prepare('INSERT INTO entries (type,person,amount,description,date,recipient) VALUES (?,?,?,?,?,?)').run('income', input.person, input.amount, input.description.trim() || 'Recebimento', input.date, (input.recipient || '').trim());
         return json(res, 201, state());
       }
       if (['/api/income-edit', '/api/income-delete'].includes(path) && req.method === 'POST') {
@@ -54,7 +55,7 @@ http.createServer(async (req, res) => {
         const entry = db.prepare("SELECT * FROM entries WHERE id=? AND type='income'").get(input.id);
         if (!entry || !sameIncome(entry, input.expected)) return json(res, 409, { error: 'Este recebimento foi alterado ou excluído. Atualize a página e tente novamente.' });
         if (path === '/api/income-delete') db.prepare("DELETE FROM entries WHERE id=? AND type='income'").run(input.id);
-        else db.prepare("UPDATE entries SET person=?,amount=?,description=?,date=? WHERE id=? AND type='income'").run(input.person, input.amount, input.description.trim() || 'Recebimento', input.date, input.id);
+        else db.prepare("UPDATE entries SET person=?,amount=?,description=?,date=?,recipient=? WHERE id=? AND type='income'").run(input.person, input.amount, input.description.trim() || 'Recebimento', input.date, (input.recipient || '').trim(), input.id);
         return json(res, 200, state());
       }
       if (path === '/api/settle' && req.method === 'POST') {

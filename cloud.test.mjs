@@ -40,6 +40,17 @@ test('API cloud valida configuração, sessão, cálculo, conflito e login', asy
     assert.equal((await request('/api/income-edit', { ...change, amount: 0 }, cookie)).statusCode, 400);
     assert.equal((await request('/api/income-delete', { id: -1, expected }, cookie)).statusCode, 400);
     assert.equal((await request('/api/income-delete', { id: 1 }, cookie)).statusCode, 400);
+    const referral = { ...expected, recipient: 'Marina' };
+    assert.equal((await request('/api/income', { ...referral, recipient: '   ' }, cookie)).statusCode, 400);
+    globalThis.fetch = async (url, options) => {
+      assert.deepEqual(JSON.parse(options.body), { p_action: 'income', p_input: referral });
+      return { ok: true, json: async () => ({ names: ['A', 'B'], entries: [{ ...referral, type: 'income' }] }) };
+    };
+    const referralResponse = await request('/api/income', referral, cookie);
+    assert.equal(referralResponse.statusCode, 201);
+    assert.equal(referralResponse.data.entries[0].recipient, 'Marina');
+    assert.deepEqual(referralResponse.data.summary.profit, [1500, 1500]);
+    assert.equal(referralResponse.data.summary.balance, 1500);
     for (const action of ['income-edit', 'income-delete']) {
       globalThis.fetch = async (url, options) => {
         assert.deepEqual(JSON.parse(options.body), { p_action: action, p_input: change });

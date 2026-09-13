@@ -55,6 +55,25 @@ test('API exige senha, persiste registros e impede acerto de saldo desatualizado
     assert.equal((await post('income-delete', { id: updated.id, expected: updated })).status, 409);
     const persisted = await (await fetch(`${base}/api/state`, { headers: { Cookie: cookie } })).json();
     assert.deepEqual(persisted, removed);
+    const referral = { person: 0, amount: 10000, date: '2026-09-13', description: 'Serviço repassado', recipient: ' Marina ' };
+    assert.equal((await post('income', { ...referral, recipient: '   ' })).status, 400);
+    const added = await (await post('income', referral)).json();
+    const entry = added.entries[0];
+    assert.equal(entry.recipient, 'Marina');
+    assert.equal(added.summary.balance, -500);
+    assert.deepEqual(added.summary.profit, [3100, 7900]);
+    const renamed = await (await post('income-edit', { ...entry, recipient: 'Ana', expected: entry })).json();
+    assert.equal(renamed.entries[0].recipient, 'Ana');
+    assert.equal((await post('income-delete', { id: entry.id, expected: entry })).status, 409);
+    const converted = await (await post('income-edit', { ...renamed.entries[0], recipient: '', expected: renamed.entries[0] })).json();
+    assert.equal(converted.summary.balance, 0);
+    assert.deepEqual(converted.summary.profit, [9600, 8400]);
+    const reverted = await (await post('income-edit', { ...converted.entries[0], recipient: 'Ana', expected: converted.entries[0] })).json();
+    const paid = await (await post('settle', { balance: reverted.summary.balance })).json();
+    assert.equal(paid.summary.balance, 0);
+    const deleted = await (await post('income-delete', { id: entry.id, expected: reverted.entries[0] })).json();
+    assert.equal(deleted.summary.balance, -1500);
+    assert.equal(deleted.entries.some(e => e.id === entry.id), false);
     assert.equal((await fetch(`${base}/theme.js`)).status, 200);
     assert.equal((await fetch(`${base}/api/settings`, { method: 'POST', headers: { Cookie: cookie, Origin: 'http://untrusted.example' }, body: JSON.stringify({ names: ['X', 'Y'] }) })).status, 403);
   } finally { child.kill(); }

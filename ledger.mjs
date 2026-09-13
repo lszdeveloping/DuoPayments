@@ -4,9 +4,9 @@ export function summarize(entries) {
   for (const entry of entries) {
     const { person, amount, type } = entry;
     if (type === 'income') {
-      const share = Math.round(amount * 20 / 100);
+      const share = Math.round(amount * (entry.recipient ? 15 : 20) / 100);
       received[person] += amount;
-      profit[person] += amount - share;
+      profit[person] += entry.recipient ? share : amount - share;
       profit[1 - person] += share;
       balance += person === 0 ? share : -share;
     } else {
@@ -17,6 +17,7 @@ export function summarize(entries) {
 }
 
 export function validateIncome(body) {
+  if (body.recipient !== undefined && (typeof body.recipient !== 'string' || body.recipient.length > 80 || (body.recipient !== '' && !body.recipient.trim()))) throw new Error('Informe o nome de quem recebeu o serviço, com até 80 caracteres.');
   if (![0, 1].includes(body.person)) throw new Error('Selecione quem recebeu.');
   if (!Number.isSafeInteger(body.amount) || body.amount < 1 || body.amount > 100000000) throw new Error('Informe um valor entre R$ 0,01 e R$ 1.000.000,00.');
   if (typeof body.description !== 'string' || body.description.trim().length > 120) throw new Error('Use uma descrição de até 120 caracteres.');
@@ -30,5 +31,5 @@ export function validateIncomeChange(body) {
 }
 
 export function sameIncome(entry, expected) {
-  return ['person', 'amount', 'description', 'date'].every(key => entry[key] === expected[key]);
+  return ['person', 'amount', 'description', 'date'].every(key => entry[key] === expected[key]) && (entry.recipient || '') === (expected.recipient || '');
 }

@@ -27,3 +27,28 @@ test('rejeita valores inválidos, sócio desconhecido e data inexistente', () =>
   assert.throws(() => validateIncome({ ...valid, person: 2 }));
   assert.throws(() => validateIncome({ ...valid, date: '2026-02-30' }));
 });
+
+test('serviço repassado divide 70/15/15 e compensa apenas a parte dos sócios', () => {
+  for (const person of [0, 1]) {
+    const entry = { ...income(person, 10000), recipient: 'Marina' };
+    const summary = summarize([entry]);
+    assert.deepEqual(summary.profit, [1500, 1500]);
+    assert.equal(summary.total, 10000);
+    assert.equal(summary.balance, person === 0 ? 1500 : -1500);
+    assert.equal(summarize([entry, { type: 'transfer', person, amount: 1500 }]).balance, 0);
+  }
+  assert.equal(summarize([{ ...income(0, 10000), recipient: 'Marina' }, income(1, 5000)]).balance, 500);
+});
+
+test('repasses preservam partes iguais dos sócios e deixam ajuste de centavos para a pessoa', () => {
+  for (let amount = 1; amount <= 1000; amount++) {
+    const { profit } = summarize([{ ...income(0, amount), recipient: 'Marina' }]);
+    assert.equal(profit[0], profit[1]);
+    const third = amount - profit[0] - profit[1];
+    assert.ok(third >= 0);
+    assert.ok(Math.abs(third - amount * .7) <= 1.000001);
+  }
+  const valid = { person: 0, amount: 10000, description: '', date: '2026-09-13' };
+  for (const recipient of [null, 1, '   ', 'a'.repeat(81)]) assert.throws(() => validateIncome({ ...valid, recipient }));
+  assert.doesNotThrow(() => validateIncome({ ...valid, recipient: 'Marina' }));
+});

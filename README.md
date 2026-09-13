@@ -34,6 +34,12 @@ Na versão Supabase, execute também `supabase/migrations/202609090002_income_ch
 
 ## Registro de repasses
 
+A aba **Serviços repassados** registra serviços executados por outra pessoa, com nome, descrição, data, valor total e o sócio que recebeu esse valor. A divisão é 70% para a pessoa e 15% para cada sócio. Cada parcela de 15% é arredondada ao centavo; o restante vai para a pessoa, conservando o total. Os lucros incluem somente as partes dos sócios e o saldo entre eles considera os 15% devidos ao outro. O valor destinado à pessoa não confirma que ela já foi paga.
+
+Os serviços podem ser editados, excluídos, buscados pelo nome da pessoa e exportados para CSV. Na edição, a divisão permite converter um recebimento próprio em serviço repassado, sem cadastrar o mesmo valor duas vezes.
+
+Para a versão online, aplique `supabase/migrations/202609130001_service_referrals.sql` depois das duas migrações anteriores e antes de publicar o código. A migração mantém os registros existentes. No SQLite local, a coluna é criada automaticamente ao reiniciar o servidor.
+
 Registrar repasse exige confirmação de que o pagamento foi feito. O site não executa Pix. Se outro recebimento mudar o saldo antes da confirmação, o acerto é recusado para revisão. Repasses anteriores permanecem no histórico e entram no cálculo dos próximos saldos.
 
 ## Verificação

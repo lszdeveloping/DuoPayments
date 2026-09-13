@@ -23,3 +23,5 @@
 [data-theme="dark"] :is(.form-error,.delete-action){color:#ff9dac}
 [data-theme="dark"] dialog::backdrop{background:#08060dcc}
 @media(max-width:420px){.topbar{padding:0 14px}.topbar-right{gap:8px}.topbar .slash{margin:0 7px}.topbar .avatars{display:none}.theme-toggle{padding:8px}.dialog-actions{flex-wrap:wrap}}
+
+#referral-info{margin:0 0 24px}#referral-info p{margin:10px 0 0}.table-footer{gap:12px;flex-wrap:wrap}@media(max-width:760px){.sidebar{flex-wrap:wrap;gap:12px}.sidebar nav{flex-wrap:wrap}.nav-item{min-height:40px}}
