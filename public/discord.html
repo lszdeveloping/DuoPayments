@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Duo — Pagamentos do Discord</title><script src="/theme.js"></script><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/discord.css"><script type="module" src="/discord.js"></script></head>
+<body>
+<main class="discord-shell">
+  <header class="discord-header"><a class="brand" href="/">duo<span class="brand-dot">•</span></a><button class="button secondary" id="logout" hidden>Sair</button></header>
+  <section id="access" class="discord-access"><span class="eyebrow">ACESSO RESTRITO</span><h1>Pagamentos do Discord<span>.</span></h1><p>Entre com a senha desta área para consultar os pagamentos confirmados.</p><form id="login"><label for="password">Senha</label><input id="password" name="password" type="password" autocomplete="current-password" required><p class="form-error" role="alert" id="login-error"></p><button class="button primary" type="submit">Entrar</button></form></section>
+  <section id="private" hidden>
+    <nav class="discord-tabs" aria-label="Área privada"><span aria-current="page">Pagamentos do Discord</span></nav>
+    <div class="page-heading"><div><span class="eyebrow">CONFIRMADOS PELA ADMINISTRAÇÃO</span><h1>Pagamentos do Discord<span>.</span></h1><p>Registros privados, separados das movimentações compartilhadas do Duo.</p></div></div>
+    <section class="stats-grid"><article class="stat-card"><div class="stat-label">Total confirmado</div><strong id="total">—</strong><small>Pagamentos registrados pelo bot</small></article><article class="stat-card"><div class="stat-label">Pedidos confirmados</div><strong id="count">—</strong><small>Um registro por ticket</small></article></section>
+    <section class="discord-records"><div class="discord-toolbar"><label for="search">Buscar pedido<input id="search" type="search" placeholder="Protocolo, serviço ou cliente"></label><button class="button secondary" id="refresh">Atualizar</button></div><p id="status" role="status"></p><div class="discord-table"><table><thead><tr><th>Pedido</th><th>Data</th><th>Valor</th><th>Recebido por</th><th>Cliente</th><th>Confirmado por</th><th>Ticket</th></tr></thead><tbody id="payments"></tbody></table></div><p id="empty" hidden>Nenhum pagamento encontrado.</p></section>
+  </section>
+</main>
+</body></html>

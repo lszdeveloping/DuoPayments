@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { summarize, validateIncome, validateIncomeChange } from '../ledger.mjs';
 import { issueSession, validSession, sameSecret } from '../cloud-auth.mjs';
+import { authorizedBot, validateDiscordPayment, discordPasswordMatches, discordSessionSecret } from '../discord-payments.mjs';
 
 const send = (res, status, data) => { res.setHeader('Cache-Control', 'no-store'); res.statusCode = status; res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(data)); };
 async function readBody(req) {
@@ -29,9 +30,42 @@ export default async function handler(req, res) {
       const ip = String(req.headers['x-vercel-forwarded-for'] || req.socket?.remoteAddress || 'unknown').split(',')[0].trim();
       const bucket = createHash('sha256').update(`${secret}:${ip}`).digest('hex');
       if (!await rpc('duo_login_attempt', { p_bucket: bucket })) return send(res, 429, { error: 'Muitas tentativas. Aguarde 15 minutos.' });
+      if (discordPasswordMatches(input.password)) {
+        res.setHeader('Set-Cookie', `duo_discord=${issueSession(discordSessionSecret(secret))}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=86400`);
+        return send(res, 200, { ok: true, scope: 'discord' });
+      }
       if (!sameSecret(String(input.password || ''), password)) return send(res, 401, { error: 'Senha incorreta.' });
       res.setHeader('Set-Cookie', `duo=${issueSession(secret)}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=86400`);
       return send(res, 200, { ok: true });
+    }
+    if (path === '/api/discord-payment') {
+      if (req.method !== 'POST') return send(res, 405, { error: 'Método não permitido.' });
+      if (!authorizedBot(req.headers.authorization)) return send(res, 401, { error: 'Integração não autorizada.' });
+      const input = validateDiscordPayment(await readBody(req));
+      const result = await rpc('duo_discord_payment', { p_input: input });
+      if (result.error) return send(res, 409, result);
+      return send(res, result.duplicate ? 200 : 201, { ok: true, id: result.id, duplicate: !!result.duplicate });
+    }
+    if (path === '/api/discord-login' && req.method === 'POST') {
+      const input = await readBody(req);
+      const ip = String(req.headers['x-vercel-forwarded-for'] || req.socket?.remoteAddress || 'unknown').split(',')[0].trim();
+      const bucket = createHash('sha256').update(`${secret}:discord:${ip}`).digest('hex');
+      if (!await rpc('duo_login_attempt', { p_bucket: bucket })) return send(res, 429, { error: 'Muitas tentativas. Aguarde 15 minutos.' });
+      if (discordPasswordMatches(input.password)) {
+        res.setHeader('Set-Cookie', `duo_discord=${issueSession(discordSessionSecret(secret))}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=86400`);
+        return send(res, 200, { ok: true, scope: 'discord' });
+      }
+      return send(res, 401, { error: 'Senha incorreta.' });
+    }
+    if (path === '/api/discord-logout' && req.method === 'POST') {
+      res.setHeader('Set-Cookie', 'duo_discord=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0');
+      return send(res, 200, { ok: true });
+    }
+    if (path === '/api/discord-payments') {
+      if (req.method !== 'GET') return send(res, 405, { error: 'Método não permitido.' });
+      const token = req.headers.cookie?.match(/(?:^|;\s*)duo_discord=([^;]+)/)?.[1];
+      if (!validSession(token, discordSessionSecret(secret))) return send(res, 401, { error: 'Entre com a senha da área Discord.' });
+      return send(res, 200, await rpc('duo_discord_list', {}));
     }
     const token = req.headers.cookie?.match(/(?:^|;\s*)duo=([^;]+)/)?.[1];
     if (!validSession(token, secret)) return send(res, 401, { error: 'Entre com a senha da loja.' });

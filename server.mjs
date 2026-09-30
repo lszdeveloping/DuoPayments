@@ -4,6 +4,9 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { summarize, validateIncome, validateIncomeChange, sameIncome } from './ledger.mjs';
+import { authorizedBot, validateDiscordPayment, discordPasswordMatches, discordSessionSecret } from './discord-payments.mjs';
+import { issueSession, validSession } from './cloud-auth.mjs';
+try { process.loadEnvFile(fileURLToPath(new URL('./.env', import.meta.url))); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 
 const host = process.env.HOST || '127.0.0.1';
 const password = process.env.APP_PASSWORD;
@@ -13,23 +16,35 @@ const db = new DatabaseSync(process.env.DB_PATH || fileURLToPath(new URL('./data
 db.exec(`PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY, names TEXT NOT NULL); INSERT OR IGNORE INTO settings VALUES (1, '["Você","Seu sócio"]'); CREATE TABLE IF NOT EXISTS entries (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, person INTEGER NOT NULL, amount INTEGER NOT NULL, description TEXT NOT NULL, date TEXT NOT NULL, created TEXT DEFAULT CURRENT_TIMESTAMP);`);
 if (!db.prepare('PRAGMA table_info(entries)').all().some(column => column.name === 'recipient')) db.exec("ALTER TABLE entries ADD COLUMN recipient TEXT NOT NULL DEFAULT ''");
 const sessions = new Map();
+const privateSecret = process.env.SESSION_SECRET || randomBytes(32).toString('hex');
+db.exec('CREATE TABLE IF NOT EXISTS discord_receipts (message_id TEXT PRIMARY KEY, payload TEXT NOT NULL, created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)');
 const attempts = new Map();
 const entries = () => db.prepare('SELECT * FROM entries ORDER BY id DESC').all();
 const state = () => { const rows = entries(); return { names: JSON.parse(db.prepare('SELECT names FROM settings WHERE id=1').get().names), entries: rows, summary: summarize(rows) }; };
 const json = (res, status, value) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); };
 async function body(req) { let result = ''; for await (const chunk of req) { result += chunk; if (result.length > 8192) throw new Error('Solicitação muito grande.'); } return JSON.parse(result || '{}'); }
 const files = { '/theme.js': ['theme.js', 'text/javascript'], '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'] };
+Object.assign(files, { '/discord.html': ['discord.html', 'text/html'], '/discord.js': ['discord.js', 'text/javascript'], '/discord.css': ['discord.css', 'text/css'] });
 http.createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
   const path = new URL(req.url, 'http://localhost').pathname;
   try {
     if (req.method !== 'GET' && req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return json(res, 403, { error: 'Origem não permitida.' });
-    if (path === '/api/login' && req.method === 'POST') {
+    if (['/api/login', '/api/discord-login'].includes(path) && req.method === 'POST') {
       const key = req.socket.remoteAddress;
       const attempt = attempts.get(key);
       if (attempt && attempt.until > Date.now() && attempt.count >= 10) return json(res, 429, { error: 'Muitas tentativas. Aguarde 15 minutos.' });
       const input = await body(req);
+      if (discordPasswordMatches(input.password)) {
+        attempts.delete(key);
+        res.setHeader('Set-Cookie', `duo_discord=${issueSession(discordSessionSecret(privateSecret))}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400${process.env.COOKIE_SECURE === 'true' ? '; Secure' : ''}`);
+        return json(res, 200, { ok: true, scope: 'discord' });
+      }
+      if (path === '/api/discord-login') {
+        attempts.set(key, { count: attempt && attempt.until > Date.now() ? attempt.count + 1 : 1, until: Date.now() + 900000 });
+        return json(res, 401, { error: 'Senha incorreta.' });
+      }
       if (password && !timingSafeEqual(createHash('sha256').update(String(input.password || '')).digest(), createHash('sha256').update(password).digest())) {
         attempts.set(key, { count: attempt && attempt.until > Date.now() ? attempt.count + 1 : 1, until: Date.now() + 900000 });
         return json(res, 401, { error: 'Senha incorreta.' });
@@ -39,6 +54,35 @@ http.createServer(async (req, res) => {
       sessions.set(token, Date.now() + 86400000);
       res.setHeader('Set-Cookie', `duo=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400${process.env.COOKIE_SECURE === 'true' ? '; Secure' : ''}`);
       return json(res, 200, { ok: true });
+    }
+    if (path === '/api/discord-payment') {
+      if (req.method !== 'POST') return json(res, 405, { error: 'Método não permitido.' });
+      if (!authorizedBot(req.headers.authorization)) return json(res, 401, { error: 'Integração não autorizada.' });
+      const input = validateDiscordPayment(await body(req));
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const prior = db.prepare('SELECT payload FROM discord_receipts WHERE message_id=?').get(input.messageId);
+        if (prior) {
+          const comparable = value => JSON.stringify(Object.fromEntries(Object.entries(value).filter(([key]) => !['date', 'confirmedBy'].includes(key)).sort(([a], [b]) => a.localeCompare(b))));
+          db.exec('COMMIT');
+          if (comparable(JSON.parse(prior.payload)) !== comparable(input)) return json(res, 409, { error: 'Este ticket já foi registrado com outros dados. Confira o lançamento no site.' });
+          return json(res, 200, { ok: true, id: input.messageId, duplicate: true });
+        }
+        db.prepare('INSERT INTO discord_receipts(message_id,payload) VALUES(?,?)').run(input.messageId, JSON.stringify(input));
+        db.exec('COMMIT');
+        return json(res, 201, { ok: true, id: input.messageId, duplicate: false });
+      } catch (error) { db.exec('ROLLBACK'); throw error; }
+    }
+    if (path === '/api/discord-logout' && req.method === 'POST') {
+      res.setHeader('Set-Cookie', 'duo_discord=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+      return json(res, 200, { ok: true });
+    }
+    if (path === '/api/discord-payments') {
+      if (req.method !== 'GET') return json(res, 405, { error: 'Método não permitido.' });
+      const token = req.headers.cookie?.match(/(?:^|;\s*)duo_discord=([^;]+)/)?.[1];
+      if (!validSession(token, discordSessionSecret(privateSecret))) return json(res, 401, { error: 'Entre com a senha da área Discord.' });
+      const payments = db.prepare('SELECT * FROM discord_receipts ORDER BY created DESC, message_id DESC').all().map(row => ({ id: row.message_id, created: row.created, payment: JSON.parse(row.payload) }));
+      return json(res, 200, { payments });
     }
     if (path.startsWith('/api/')) {
       const token = req.headers.cookie?.match(/(?:^|;\s*)duo=([^;]+)/)?.[1];
