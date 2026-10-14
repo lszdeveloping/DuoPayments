@@ -1,0 +1,17 @@
+-- Replaces the reset function without executing it or deleting data.
+-- Explicit primary-key predicates support Supabase's safeupdate protection.
+begin;
+create or replace function public.duo_reset()
+returns jsonb language plpgsql security invoker set search_path = '' as $$
+begin
+  perform 1 from public.duo_settings where id = 1 for update;
+  delete from public.duo_entries where id is not null;
+  delete from public.duo_discord_receipts where message_id is not null;
+  update public.duo_settings set names = '["Você","Seu sócio"]'::jsonb where id = 1;
+  return jsonb_build_object('names',jsonb_build_array('Você','Seu sócio'),'entries','[]'::jsonb);
+end;
+$$;
+revoke all on function public.duo_reset() from public, anon, authenticated;
+grant execute on function public.duo_reset() to service_role;
+notify pgrst, 'reload schema';
+commit;

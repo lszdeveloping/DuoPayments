@@ -65,6 +65,8 @@ Referências: [Vercel: configuração e funções](https://vercel.com/docs/proje
 
 ## Apagar todos os dados
 
+Após a migração `202610140001_reset.sql`, aplique também `supabase/migrations/202610140002_reset_safeupdate.sql`. Ela corrige a compatibilidade com a proteção do Supabase contra `DELETE` sem `WHERE` (erro 21000). Apenas substitui a função; não executa a exclusão e não desativa a proteção do banco.
+
 Em Configurações, **Apagar todos os dados do Duo** exige a senha de exclusão e o texto `APAGAR TUDO`. Apaga recebimentos, acertos, serviços repassados e pagamentos privados Discord; restaura os nomes dos sócios. Mantém as senhas, as sessões e os controles de tentativas. Não altera tickets nem cargos no Discord. Sem os registros privados, um reenvio de um ticket antigo pode ser registrado novamente.
 
 Configure `RESET_PASSWORD` somente no servidor (no `.env` local ou nas variáveis Production da Vercel). Sem essa variável, a exclusão fica indisponível. A senha não deve ser publicada no GitHub.
