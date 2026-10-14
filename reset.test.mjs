@@ -57,6 +57,16 @@ test('reset cloud valida autorização antes do RPC e limita tentativas', async 
     assert.equal(resets, 0);
     assert.equal((await request(valid)).data.summary.total, 0);
     assert.equal(resets, 1);
+    for (const [code, text] of [['PGRST202', 'não encontrou'], ['42P01', 'Falta uma tabela'], ['42501', 'permissão'], ['XX000', 'XX000']]) {
+      globalThis.fetch = async url => url.endsWith('duo_login_attempt')
+        ? { ok: true, json: async () => true }
+        : { ok: false, status: 400, json: async () => ({ code, message: 'PRIVATE_DATABASE_DETAILS' }) };
+      const failure = await request(valid);
+      assert.equal(failure.statusCode, 400);
+      assert.ok(failure.data.error.includes(text));
+      assert.ok(!failure.data.error.includes('PRIVATE_DATABASE_DETAILS'));
+    }
+    globalThis.fetch = async () => ({ ok: true, json: async () => allowed });
     allowed = false;
     assert.equal((await request(valid)).statusCode, 429);
     delete process.env.RESET_PASSWORD;

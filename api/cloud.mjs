@@ -18,7 +18,19 @@ export default async function handler(req, res) {
   if (!url || !key || !password || !secret || secret.length < 32) return send(res, 503, { error: 'A configuração do servidor ainda não foi concluída.' });
   async function rpc(name, input) {
     const response = await fetch(`${url.replace(/\/$/, '')}/rest/v1/rpc/${name}`, { method: 'POST', headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal: AbortSignal.timeout(12000) });
-    if (!response.ok) throw new Error('Não foi possível acessar o banco. Tente novamente.');
+    if (!response.ok) {
+      let failure;
+      try { failure = await response.json(); } catch {}
+      const code = typeof failure?.code === 'string' && /^[A-Z0-9]{5,12}$/.test(failure.code) ? failure.code : 'SEM_CODIGO';
+      // Log only identifiers, never database messages, payloads or credentials.
+      console.error('Duo RPC failed', { rpc: name, status: response.status, code });
+      if (name === 'duo_reset') {
+        if (code === 'PGRST202') throw new Error('A API do banco não encontrou a função de exclusão. Confira se a migração foi aplicada no mesmo projeto de SUPABASE_URL e recarregue o cache do Supabase. Código: PGRST202.');
+        if (code === '42P01') throw new Error('Falta uma tabela necessária para apagar os dados. Confira se todas as migrações, incluindo a de pagamentos Discord, foram aplicadas. Código: 42P01.');
+        if (code === '42501') throw new Error('O banco recusou a permissão de exclusão. Confira a chave service_role e as permissões das migrações. Código: 42501.');
+      }
+      throw new Error(`Não foi possível acessar o banco (${name}, ${code}, HTTP ${response.status}). Tente novamente.`);
+    }
     return response.json();
   }
   try {
