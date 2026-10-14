@@ -72,3 +72,9 @@ Em Configurações, **Apagar todos os dados do Duo** exige a senha de exclusão 
 Configure `RESET_PASSWORD` somente no servidor (no `.env` local ou nas variáveis Production da Vercel). Sem essa variável, a exclusão fica indisponível. A senha não deve ser publicada no GitHub.
 
 No Supabase, aplique `supabase/migrations/202610140001_reset.sql` depois das migrações anteriores. A migração apenas instala a função: não apaga dados. Faça redeploy na Vercel após configurar a variável. A exclusão é transacional e só é executada pelo botão após autenticação e confirmação. Os testes cloud simulam o RPC; a migração deve ser aplicada no banco antes de usar a função online.
+
+## Acesso a cada abertura
+
+O site pede senha ao abrir, recarregar ou voltar por histórico do navegador, tanto no Duo principal quanto na área Discord. Os cookies de login não têm duração persistente. Abrir outra aba encerra os cookies compartilhados e pode exigir novo login na aba anterior.
+
+Na versão online, as sessões dependem de `APP_PASSWORD` e `SESSION_SECRET`. Esta atualização invalida os cookies da versão anterior. Alterar `APP_PASSWORD` e fazer redeploy invalida sessões das duas áreas; mudar `DISCORD_VIEW_PASSWORD_HASH` invalida também a sessão privada. Quem conhece uma senha atual ainda pode entrar: troque as senhas conhecidas por pessoas cujo acesso foi removido. Nenhuma alteração de banco é necessária.

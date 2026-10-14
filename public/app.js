@@ -1,6 +1,7 @@
 const $ = s => document.querySelector(s);
 let state = { names: ['Você', 'Seu sócio'], entries: [], summary: { received: [0, 0], profit: [0, 0], balance: 0, total: 0 } };
 let view = 'overview', filter = 'all', confirmedBalance = 0, toastTimer;
+let authenticated = false, accessVersion = 0;
 let editingIncome = null, deletingIncome = null;
 function renderTheme() {
   const dark = document.documentElement.dataset.theme === 'dark';
@@ -25,7 +26,7 @@ function cents(value) { const clean = value.trim().replace(/\s/g, ''); if (!/^(?
 async function api(path, data) {
   const response = await fetch(`/api/${path}`, data === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
   const result = await response.json();
-  if (response.status === 401 && path !== 'login') { if (!$('#login-dialog').open) $('#login-dialog').showModal(); throw new Error(result.error); }
+  if (response.status === 401 && path !== 'login') { authenticated = false; if (!$('#login-dialog').open) $('#login-dialog').showModal(); throw new Error(result.error); }
   if (!response.ok) throw new Error(result.error || 'Não foi possível salvar.');
   return result;
 }
@@ -121,10 +122,24 @@ submit('#delete-form', async () => { state = await api('income-delete', { id: de
 submit('#reset-form', async form => { state = await api('reset', { password: form.elements.password.value, confirm: form.elements.confirm.value }); editingIncome = null; deletingIncome = null; render(); toast('Todos os dados do Duo foram apagados.'); });
 submit('#settings-form', async form => { state = await api('settings', { names: [form.elements.first.value, form.elements.second.value] }); render(); toast('Nomes atualizados.'); });
 submit('#settle-form', async () => { state = await api('settle', { balance: confirmedBalance }); render(); toast('Repasse registrado. Vocês estão em dia!'); });
-submit('#login-form', async form => { const result = await api('login', { password: form.elements.password.value }); form.reset(); if (result.scope === 'discord') { location.replace('/discord.html'); return; } await refresh(); });
+submit('#login-form', async form => { const result = await api('login', { password: form.elements.password.value }); form.reset(); if (result.scope === 'discord') { location.replace('/discord.html'); return; } authenticated = true; document.querySelector('main').hidden = false; await refresh(); });
 $('#login-dialog').addEventListener('cancel', e => e.preventDefault());
 $('#export-button').onclick = () => { const cell = value => `"${String(value).replace(/^[=+@\-\t\r]/, "'$&").replaceAll('"', '""')}"`; const rows = [['Descrição', 'Sócio', 'Data', 'Valor (R$)', 'Parte do sócio (R$)', 'Serviço repassado para', 'Parte da pessoa (R$)', 'Tipo'], ...filteredRows().map(e => [e.description, state.names[e.person], dateLabel(e.date), (e.amount / 100).toFixed(2).replace('.', ','), e.type === 'income' ? (partnerShare(e) / 100).toFixed(2).replace('.', ',') : '', e.recipient || '', e.recipient ? (recipientShare(e) / 100).toFixed(2).replace('.', ',') : '', entryType(e)])]; const url = URL.createObjectURL(new Blob(['\ufeff' + rows.map(r => r.map(cell).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' })); const link = document.createElement('a'); link.href = url; link.download = `duo-movimentacoes-${today()}.csv`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
-async function refresh() { try { state = await api('state'); render(); $('.live').innerHTML = '<i></i>Conectado'; } catch (error) { $('.live').textContent = 'Sem conexão'; if (!$('#login-dialog').open) toast('Não foi possível atualizar. Verifique a conexão.'); } }
-await refresh();
+async function refresh() { if (!authenticated) return; const version = accessVersion; try { const result = await api('state'); if (!authenticated || version !== accessVersion) return; state = result; render(); $('.live').innerHTML = '<i></i>Conectado'; } catch (error) { $('.live').textContent = 'Sem conexão'; if (!$('#login-dialog').open) toast('Não foi possível atualizar. Verifique a conexão.'); } }
+async function requireLogin() {
+  authenticated = false; accessVersion++;
+  document.querySelector('main').hidden = true;
+  editingIncome = null; deletingIncome = null;
+  document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+  $('#login-form').reset();
+  const button = $('#login-form').querySelector('button');
+  button.disabled = true;
+  $('#login-dialog').showModal();
+  try { await api('logout', {}); $('#login-form .form-error').textContent = ''; button.disabled = false; }
+  catch { $('#login-form .form-error').textContent = 'Não foi possível encerrar o acesso anterior. Recarregue a página.'; }
+}
+window.addEventListener('pagehide', () => { authenticated = false; accessVersion++; document.querySelector('main').hidden = true; });
+window.addEventListener('pageshow', event => { if (event.persisted) requireLogin(); });
+await requireLogin();
 setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]')) refresh(); }, 10000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !document.querySelector('dialog[open]')) refresh(); });

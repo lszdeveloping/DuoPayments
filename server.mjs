@@ -5,7 +5,7 @@ import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { summarize, validateIncome, validateIncomeChange, sameIncome } from './ledger.mjs';
 import { authorizedBot, validateDiscordPayment, discordPasswordMatches, discordSessionSecret } from './discord-payments.mjs';
-import { issueSession, validSession, sameSecret } from './cloud-auth.mjs';
+import { issueSession, validSession, sameSecret, appSessionSecret } from './cloud-auth.mjs';
 try { process.loadEnvFile(fileURLToPath(new URL('./.env', import.meta.url))); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 
 const host = process.env.HOST || '127.0.0.1';
@@ -31,6 +31,12 @@ http.createServer(async (req, res) => {
   const path = new URL(req.url, 'http://localhost').pathname;
   try {
     if (req.method !== 'GET' && req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return json(res, 403, { error: 'Origem não permitida.' });
+    if (path === '/api/logout' && req.method === 'POST') {
+      const token = req.headers.cookie?.match(/(?:^|;\s*)duo=([^;]+)/)?.[1];
+      sessions.delete(token);
+      res.setHeader('Set-Cookie', ['duo=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0', 'duo_discord=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0']);
+      return json(res, 200, { ok: true });
+    }
     if (['/api/login', '/api/discord-login'].includes(path) && req.method === 'POST') {
       const key = req.socket.remoteAddress;
       const attempt = attempts.get(key);
@@ -38,7 +44,7 @@ http.createServer(async (req, res) => {
       const input = await body(req);
       if (discordPasswordMatches(input.password)) {
         attempts.delete(key);
-        res.setHeader('Set-Cookie', `duo_discord=${issueSession(discordSessionSecret(privateSecret))}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400${process.env.COOKIE_SECURE === 'true' ? '; Secure' : ''}`);
+        res.setHeader('Set-Cookie', `duo_discord=${issueSession(discordSessionSecret(appSessionSecret(privateSecret, password || '')))}; HttpOnly; SameSite=Strict; Path=/${process.env.COOKIE_SECURE === 'true' ? '; Secure' : ''}`);
         return json(res, 200, { ok: true, scope: 'discord' });
       }
       if (path === '/api/discord-login') {
@@ -52,7 +58,7 @@ http.createServer(async (req, res) => {
       attempts.delete(key);
       const token = randomBytes(32).toString('hex');
       sessions.set(token, Date.now() + 86400000);
-      res.setHeader('Set-Cookie', `duo=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400${process.env.COOKIE_SECURE === 'true' ? '; Secure' : ''}`);
+      res.setHeader('Set-Cookie', `duo=${token}; HttpOnly; SameSite=Strict; Path=/${process.env.COOKIE_SECURE === 'true' ? '; Secure' : ''}`);
       return json(res, 200, { ok: true });
     }
     if (path === '/api/discord-payment') {
@@ -80,7 +86,7 @@ http.createServer(async (req, res) => {
     if (path === '/api/discord-payments') {
       if (req.method !== 'GET') return json(res, 405, { error: 'Método não permitido.' });
       const token = req.headers.cookie?.match(/(?:^|;\s*)duo_discord=([^;]+)/)?.[1];
-      if (!validSession(token, discordSessionSecret(privateSecret))) return json(res, 401, { error: 'Entre com a senha da área Discord.' });
+      if (!validSession(token, discordSessionSecret(appSessionSecret(privateSecret, password || '')))) return json(res, 401, { error: 'Entre com a senha da área Discord.' });
       const payments = db.prepare('SELECT * FROM discord_receipts ORDER BY created DESC, message_id DESC').all().map(row => ({ id: row.message_id, created: row.created, payment: JSON.parse(row.payload) }));
       return json(res, 200, { payments });
     }

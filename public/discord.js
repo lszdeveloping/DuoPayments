@@ -51,5 +51,11 @@ $('#logout').onclick = async () => { try { await api('discord-logout', {}); lock
 $('#refresh').onclick = () => refresh().catch(error => { $('#status').textContent = error.message; });
 $('#search').oninput = render;
 window.addEventListener('pagehide', lock);
-window.addEventListener('pageshow', () => refresh().catch(() => {}));
+async function requireLogin() {
+  lock(); $('#login').reset();
+  const button = $('#login').querySelector('button'); button.disabled = true;
+  try { await api('discord-logout', {}); button.disabled = false; }
+  catch { $('#login-error').textContent = 'Não foi possível encerrar o acesso anterior. Recarregue a página.'; }
+}
+window.addEventListener('pageshow', () => requireLogin());
 setInterval(() => { if (!document.hidden && !$('#private').hidden) refresh().catch(error => { $('#status').textContent = error.message; }); }, 10000);

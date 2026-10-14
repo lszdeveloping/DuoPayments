@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import handler from './api/cloud.mjs';
-import { issueSession } from './cloud-auth.mjs';
+import { issueSession, appSessionSecret } from './cloud-auth.mjs';
 
 test('API cloud valida configuração, sessão, cálculo, conflito e login', async () => {
   const previousEnv = { ...process.env }, previousFetch = globalThis.fetch;
@@ -18,7 +18,7 @@ test('API cloud valida configuração, sessão, cálculo, conflito e login', asy
     assert.equal((await request('/api/state')).statusCode, 503);
     process.env.APP_PASSWORD = 'test';
     assert.equal((await request('/api/state')).statusCode, 401);
-    const cookie = `duo=${issueSession(process.env.SESSION_SECRET)}`;
+    const cookie = `duo=${issueSession(appSessionSecret(process.env.SESSION_SECRET, process.env.APP_PASSWORD))}`;
     const rows = [{ type: 'income', person: 0, amount: 10000 }, { type: 'income', person: 1, amount: 8000 }];
     globalThis.fetch = async (url, options) => {
       assert.equal(options.headers.apikey, 'server-only-test-key');

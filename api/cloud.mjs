@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { summarize, validateIncome, validateIncomeChange } from '../ledger.mjs';
-import { issueSession, validSession, sameSecret } from '../cloud-auth.mjs';
+import { issueSession, validSession, sameSecret, appSessionSecret } from '../cloud-auth.mjs';
 import { authorizedBot, validateDiscordPayment, discordPasswordMatches, discordSessionSecret } from '../discord-payments.mjs';
 
 const send = (res, status, data) => { res.setHeader('Cache-Control', 'no-store'); res.statusCode = status; res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(data)); };
@@ -37,17 +37,21 @@ export default async function handler(req, res) {
     const requestUrl = new URL(req.url, 'https://localhost');
     const path = requestUrl.pathname === '/api/cloud' ? `/api/${requestUrl.searchParams.get('route') || ''}` : requestUrl.pathname;
     if (req.method !== 'GET' && req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return send(res, 403, { error: 'Origem não permitida.' });
+    if (path === '/api/logout' && req.method === 'POST') {
+      res.setHeader('Set-Cookie', ['duo=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0', 'duo_discord=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0']);
+      return send(res, 200, { ok: true });
+    }
     if (path === '/api/login' && req.method === 'POST') {
       const input = await readBody(req);
       const ip = String(req.headers['x-vercel-forwarded-for'] || req.socket?.remoteAddress || 'unknown').split(',')[0].trim();
       const bucket = createHash('sha256').update(`${secret}:${ip}`).digest('hex');
       if (!await rpc('duo_login_attempt', { p_bucket: bucket })) return send(res, 429, { error: 'Muitas tentativas. Aguarde 15 minutos.' });
       if (discordPasswordMatches(input.password)) {
-        res.setHeader('Set-Cookie', `duo_discord=${issueSession(discordSessionSecret(secret))}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=86400`);
+        res.setHeader('Set-Cookie', `duo_discord=${issueSession(discordSessionSecret(appSessionSecret(secret, password)))}; HttpOnly; Secure; SameSite=Strict; Path=/`);
         return send(res, 200, { ok: true, scope: 'discord' });
       }
       if (!sameSecret(String(input.password || ''), password)) return send(res, 401, { error: 'Senha incorreta.' });
-      res.setHeader('Set-Cookie', `duo=${issueSession(secret)}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=86400`);
+      res.setHeader('Set-Cookie', `duo=${issueSession(appSessionSecret(secret, password))}; HttpOnly; Secure; SameSite=Strict; Path=/`);
       return send(res, 200, { ok: true });
     }
     if (path === '/api/discord-payment') {
@@ -64,7 +68,7 @@ export default async function handler(req, res) {
       const bucket = createHash('sha256').update(`${secret}:discord:${ip}`).digest('hex');
       if (!await rpc('duo_login_attempt', { p_bucket: bucket })) return send(res, 429, { error: 'Muitas tentativas. Aguarde 15 minutos.' });
       if (discordPasswordMatches(input.password)) {
-        res.setHeader('Set-Cookie', `duo_discord=${issueSession(discordSessionSecret(secret))}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=86400`);
+        res.setHeader('Set-Cookie', `duo_discord=${issueSession(discordSessionSecret(appSessionSecret(secret, password)))}; HttpOnly; Secure; SameSite=Strict; Path=/`);
         return send(res, 200, { ok: true, scope: 'discord' });
       }
       return send(res, 401, { error: 'Senha incorreta.' });
@@ -76,11 +80,11 @@ export default async function handler(req, res) {
     if (path === '/api/discord-payments') {
       if (req.method !== 'GET') return send(res, 405, { error: 'Método não permitido.' });
       const token = req.headers.cookie?.match(/(?:^|;\s*)duo_discord=([^;]+)/)?.[1];
-      if (!validSession(token, discordSessionSecret(secret))) return send(res, 401, { error: 'Entre com a senha da área Discord.' });
+      if (!validSession(token, discordSessionSecret(appSessionSecret(secret, password)))) return send(res, 401, { error: 'Entre com a senha da área Discord.' });
       return send(res, 200, await rpc('duo_discord_list', {}));
     }
     const token = req.headers.cookie?.match(/(?:^|;\s*)duo=([^;]+)/)?.[1];
-    if (!validSession(token, secret)) return send(res, 401, { error: 'Entre com a senha da loja.' });
+    if (!validSession(token, appSessionSecret(secret, password))) return send(res, 401, { error: 'Entre com a senha da loja.' });
     if (path === '/api/reset') {
       if (req.method !== 'POST') return send(res, 405, { error: 'Método não permitido.' });
       if (!process.env.RESET_PASSWORD) return send(res, 503, { error: 'A senha de exclusão não foi configurada.' });

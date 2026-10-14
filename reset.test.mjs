@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import handler from './api/cloud.mjs';
-import { issueSession } from './cloud-auth.mjs';
+import { issueSession, appSessionSecret } from './cloud-auth.mjs';
 
 test('reset local exige login, senha e confirmação e apaga os registros', async () => {
   const child = spawn(process.execPath, ['server.mjs'], { env: { ...process.env, HOST: '127.0.0.1', PORT: '3096', DB_PATH: ':memory:', APP_PASSWORD: 'test-login', RESET_PASSWORD: 'test-reset', DISCORD_PAYMENTS_TOKEN: 't'.repeat(32), DISCORD_GUILD_ID: '1559035931418304534' }, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -42,7 +42,7 @@ test('reset cloud valida autorização antes do RPC e limita tentativas', async 
     Object.assign(process.env, { SUPABASE_URL: 'https://test.invalid', SUPABASE_SERVICE_ROLE_KEY: 'test', APP_PASSWORD: 'test', RESET_PASSWORD: 'test-reset', SESSION_SECRET: 's'.repeat(32) });
     let resets = 0, allowed = true;
     globalThis.fetch = async url => ({ ok: true, json: async () => { if (url.endsWith('duo_login_attempt')) return allowed; assert.ok(url.endsWith('duo_reset')); resets++; return { names: ['Você', 'Seu sócio'], entries: [] }; } });
-    const cookie = `duo=${issueSession(process.env.SESSION_SECRET)}`;
+    const cookie = `duo=${issueSession(appSessionSecret(process.env.SESSION_SECRET, process.env.APP_PASSWORD))}`;
     const request = async (body, auth = cookie, method = 'POST') => {
       const res = { setHeader() {}, end(raw) { this.data = JSON.parse(raw); } };
       await handler({ url: '/api/reset', method, body, headers: { host: 'test', cookie: auth } }, res);
@@ -50,7 +50,7 @@ test('reset cloud valida autorização antes do RPC e limita tentativas', async 
     };
     const valid = { password: 'test-reset', confirm: 'APAGAR TUDO' };
     assert.equal((await request(valid, '')).statusCode, 401);
-    assert.equal((await request(valid, `duo_discord=${issueSession(process.env.SESSION_SECRET)}`)).statusCode, 401);
+    assert.equal((await request(valid, `duo_discord=${issueSession(appSessionSecret(process.env.SESSION_SECRET, process.env.APP_PASSWORD))}`)).statusCode, 401);
     assert.equal((await request(valid, cookie, 'GET')).statusCode, 405);
     assert.equal((await request({ ...valid, password: 'wrong' })).statusCode, 403);
     assert.equal((await request({ password: 'test-reset' })).statusCode, 400);

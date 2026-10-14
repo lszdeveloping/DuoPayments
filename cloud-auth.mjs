@@ -1,5 +1,8 @@
 import { createHmac, timingSafeEqual, randomBytes, createHash } from 'node:crypto';
 export function sameSecret(a, b) { return timingSafeEqual(createHash('sha256').update(a).digest(), createHash('sha256').update(b).digest()); }
+export function appSessionSecret(secret, password) {
+  return createHmac('sha256', secret).update(JSON.stringify(['duo-login-v2', password])).digest('hex');
+}
 export function issueSession(secret, now = Date.now()) {
   const payload = `${now + 86400000}.${randomBytes(24).toString('hex')}`;
   return `${payload}.${createHmac('sha256', secret).update(payload).digest('hex')}`;
