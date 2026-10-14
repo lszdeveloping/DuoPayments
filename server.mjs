@@ -5,7 +5,7 @@ import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { summarize, validateIncome, validateIncomeChange, sameIncome } from './ledger.mjs';
 import { authorizedBot, validateDiscordPayment, discordPasswordMatches, discordSessionSecret } from './discord-payments.mjs';
-import { issueSession, validSession } from './cloud-auth.mjs';
+import { issueSession, validSession, sameSecret } from './cloud-auth.mjs';
 try { process.loadEnvFile(fileURLToPath(new URL('./.env', import.meta.url))); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 
 const host = process.env.HOST || '127.0.0.1';
@@ -88,6 +88,23 @@ http.createServer(async (req, res) => {
       const token = req.headers.cookie?.match(/(?:^|;\s*)duo=([^;]+)/)?.[1];
       if (password && (!token || (sessions.get(token) || 0) < Date.now())) return json(res, 401, { error: 'Entre com a senha da loja.' });
       if (path === '/api/state' && req.method === 'GET') return json(res, 200, state());
+      if (path === '/api/reset') {
+        if (req.method !== 'POST') return json(res, 405, { error: 'Método não permitido.' });
+        if (!process.env.RESET_PASSWORD) return json(res, 503, { error: 'A senha de exclusão não foi configurada.' });
+        const key = `reset:${req.socket.remoteAddress}`, attempt = attempts.get(key);
+        if (attempt && attempt.until > Date.now() && attempt.count >= 10) return json(res, 429, { error: 'Muitas tentativas. Aguarde 15 minutos.' });
+        attempts.set(key, { count: attempt && attempt.until > Date.now() ? attempt.count + 1 : 1, until: attempt && attempt.until > Date.now() ? attempt.until : Date.now() + 900000 });
+        const input = await body(req);
+        if (typeof input.password !== 'string' || !sameSecret(input.password, process.env.RESET_PASSWORD)) return json(res, 403, { error: 'Senha de exclusão incorreta.' });
+        if (input.confirm !== 'APAGAR TUDO') return json(res, 400, { error: 'Confirme a exclusão de todos os dados.' });
+        db.exec('BEGIN IMMEDIATE');
+        try {
+          db.exec('DELETE FROM entries; DELETE FROM discord_receipts;');
+          db.prepare('UPDATE settings SET names=? WHERE id=1').run(JSON.stringify(['Você', 'Seu sócio']));
+          db.exec('COMMIT');
+        } catch (error) { db.exec('ROLLBACK'); throw error; }
+        return json(res, 200, state());
+      }
       if (path === '/api/income' && req.method === 'POST') {
         const input = await body(req); validateIncome(input);
         db.prepare('INSERT INTO entries (type,person,amount,description,date,recipient) VALUES (?,?,?,?,?,?)').run('income', input.person, input.amount, input.description.trim() || 'Recebimento', input.date, (input.recipient || '').trim());

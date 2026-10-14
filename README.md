@@ -62,3 +62,11 @@ A versão online usa `api/cloud.mjs` e Supabase; `server.mjs` continua sendo a v
 O banco online começa vazio: registros de `data/duo.sqlite` não são enviados automaticamente. Não aponte deployments de preview para o banco de produção; configure outro projeto Supabase se precisar testar online. A conexão real e a migração precisam ser validadas no projeto escolhido antes de considerar a publicação concluída.
 
 Referências: [Vercel: configuração e funções](https://vercel.com/docs/project-configuration/vercel-json), [Supabase: funções do banco](https://supabase.com/docs/guides/database/functions).
+
+## Apagar todos os dados
+
+Em Configurações, **Apagar todos os dados do Duo** exige a senha de exclusão e o texto `APAGAR TUDO`. Apaga recebimentos, acertos, serviços repassados e pagamentos privados Discord; restaura os nomes dos sócios. Mantém as senhas, as sessões e os controles de tentativas. Não altera tickets nem cargos no Discord. Sem os registros privados, um reenvio de um ticket antigo pode ser registrado novamente.
+
+Configure `RESET_PASSWORD` somente no servidor (no `.env` local ou nas variáveis Production da Vercel). Sem essa variável, a exclusão fica indisponível. A senha não deve ser publicada no GitHub.
+
+No Supabase, aplique `supabase/migrations/202610140001_reset.sql` depois das migrações anteriores. A migração apenas instala a função: não apaga dados. Faça redeploy na Vercel após configurar a variável. A exclusão é transacional e só é executada pelo botão após autenticação e confirmação. Os testes cloud simulam o RPC; a migração deve ser aplicada no banco antes de usar a função online.

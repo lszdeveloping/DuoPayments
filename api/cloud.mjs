@@ -69,6 +69,18 @@ export default async function handler(req, res) {
     }
     const token = req.headers.cookie?.match(/(?:^|;\s*)duo=([^;]+)/)?.[1];
     if (!validSession(token, secret)) return send(res, 401, { error: 'Entre com a senha da loja.' });
+    if (path === '/api/reset') {
+      if (req.method !== 'POST') return send(res, 405, { error: 'Método não permitido.' });
+      if (!process.env.RESET_PASSWORD) return send(res, 503, { error: 'A senha de exclusão não foi configurada.' });
+      const ip = String(req.headers['x-vercel-forwarded-for'] || req.socket?.remoteAddress || 'unknown').split(',')[0].trim();
+      const bucket = createHash('sha256').update(`${secret}:reset:${ip}`).digest('hex');
+      if (!await rpc('duo_login_attempt', { p_bucket: bucket })) return send(res, 429, { error: 'Muitas tentativas. Aguarde 15 minutos.' });
+      const input = await readBody(req);
+      if (typeof input.password !== 'string' || !sameSecret(input.password, process.env.RESET_PASSWORD)) return send(res, 403, { error: 'Senha de exclusão incorreta.' });
+      if (input.confirm !== 'APAGAR TUDO') return send(res, 400, { error: 'Confirme a exclusão de todos os dados.' });
+      const result = await rpc('duo_reset', {});
+      return send(res, 200, { ...result, summary: summarize(result.entries) });
+    }
     const actions = { '/api/state': ['GET', 'state'], '/api/income': ['POST', 'income'], '/api/income-edit': ['POST', 'income-edit'], '/api/income-delete': ['POST', 'income-delete'], '/api/settings': ['POST', 'settings'], '/api/settle': ['POST', 'settle'] };
     const action = actions[path];
     if (!action) return send(res, 404, { error: 'Página não encontrada.' });
